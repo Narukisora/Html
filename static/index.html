@@ -1,0 +1,138 @@
+<!-- static/index.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mini Wallet (Vercel + Flask + Supabase)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;max-width:720px;margin:30px auto;padding:10px}
+    input,button{padding:10px;margin:6px 0;width:100%}
+    .row{display:flex;gap:8px}
+    .small{width:50%}
+    .log{white-space:pre-line;background:#f6f6f6;padding:8px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <h2>Login</h2>
+  <input id="name" placeholder="Enter name" />
+  <input id="id" placeholder="Enter id" />
+  <button id="loginBtn">Log in</button>
+
+  <div id="dashboard" style="display:none; margin-top:20px;">
+    <h3>Account</h3>
+    <div><strong id="accName"></strong> — <span id="accId"></span></div>
+    <div>Balance: <strong id="balance">0</strong>₱</div>
+
+    <h4>Actions</h4>
+    <input id="changeVal" placeholder="Set balance (number)" />
+    <button id="changeBtn">Change</button>
+
+    <div style="margin-top:10px;">
+      <input id="deductVal" placeholder="Deduct amount (number)" />
+      <button id="deductBtn">Deduct</button>
+    </div>
+
+    <h4>Log</h4>
+    <div id="logList" class="log">No logs yet.</div>
+  </div>
+
+<script>
+const loginBtn = document.getElementById('loginBtn');
+const dashboard = document.getElementById('dashboard');
+const logList = document.getElementById('logList');
+
+let currentUser = null;
+
+loginBtn.onclick = async () => {
+  const name = document.getElementById('name').value.trim();
+  const id = document.getElementById('id').value.trim();
+  if(!name || !id) { alert('enter both'); return;}
+
+  const resp = await fetch('/api/login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, id})
+  });
+  const json = await resp.json();
+  if(!json.found){
+    alert('Not found');
+    return;
+  }
+  currentUser = json.user;
+  document.getElementById('accName').innerText = currentUser.name;
+  document.getElementById('accId').innerText = currentUser.id;
+  document.getElementById('balance').innerText = json.user.balance;
+  renderLogs(json.logs);
+  dashboard.style.display = 'block';
+}
+
+document.getElementById('changeBtn').onclick = async () => {
+  if(!currentUser) return alert('login first');
+  const v = Number(document.getElementById('changeVal').value);
+  if(isNaN(v)) return alert('enter number');
+  const resp = await fetch('/api/change', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id: currentUser.id, balance: v})
+  });
+  const json = await resp.json();
+  if(json.ok){
+    document.getElementById('balance').innerText = json.balance;
+    // re-fetch logs (quick hack: call login API)
+    await fakeReload();
+  } else {
+    alert('error: ' + (json.error || 'unknown'));
+  }
+}
+
+document.getElementById('deductBtn').onclick = async () => {
+  if(!currentUser) return alert('login first');
+  const amount = Number(document.getElementById('deductVal').value);
+  if(isNaN(amount)) return alert('enter number');
+  const resp = await fetch('/api/deduct', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id: currentUser.id, amount})
+  });
+  const json = await resp.json();
+  if(json.ok){
+    document.getElementById('balance').innerText = json.balance;
+    // Prepend a formatted line to the log
+    const nowLine = `-${amount}₱\n${new Date().toLocaleString()}`;
+    prependLog(nowLine);
+  } else {
+    alert('error: ' + (json.error || 'unknown'));
+  }
+}
+
+function renderLogs(logs){
+  if(!logs || logs.length===0){ logList.innerText = 'No logs yet.'; return; }
+  const lines = logs.map(l => {
+    const amt = l.amount;
+    const t = new Date(l.created_at).toLocaleString();
+    return (amt>0? '+'+amt: String(amt)) + '₱\n' + t + (l.notes? ' — ' + l.notes: '');
+  });
+  logList.innerText = lines.join('\n\n');
+}
+
+function prependLog(line){
+  if(logList.innerText.trim() === 'No logs yet.') logList.innerText = line;
+  else logList.innerText = line + '\n\n' + logList.innerText;
+}
+
+async function fakeReload(){
+  // re-run login to refresh logs
+  const name = document.getElementById('accName').innerText;
+  const id = document.getElementById('accId').innerText;
+  const resp = await fetch('/api/login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, id})
+  });
+  const json = await resp.json();
+  if(json.found) renderLogs(json.logs);
+}
+</script>
+</body>
+</html>
