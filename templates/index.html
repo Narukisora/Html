@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bank Scanner Simulator</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+    video, canvas { width: 100%; max-width: 400px; border: 2px solid #333; border-radius: 8px; }
+    button { margin:5px; padding:10px; border:none; border-radius:6px; background:#0070f3; color:#fff; cursor:pointer; }
+    #panel { margin-top:20px; padding:10px; background:#fff; border-radius:6px; display:none; }
+  </style>
+</head>
+<body>
+  <h2>📷 Bank Scanner Simulator</h2>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <button id="scanBtn">Scan Name & ID</button>
+
+  <div id="panel">
+    <h3>Account</h3>
+    <p id="accName"></p>
+    <p id="accId"></p>
+    <p id="accBalance"></p>
+    <input type="number" id="amount" placeholder="Amount"><br>
+    <button id="deductBtn">Deduct</button>
+    <button id="changeBtn">Change Amount</button>
+    <button id="exitBtn">Exit this ID</button>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const scanBtn = document.getElementById('scanBtn');
+    const panel = document.getElementById('panel');
+    const accName = document.getElementById('accName');
+    const accId = document.getElementById('accId');
+    const accBalance = document.getElementById('accBalance');
+    let currentUser = null;
+
+    // Open back camera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => video.srcObject = stream)
+      .catch(err => alert("Camera error: " + err));
+
+    async function callAPI(url, payload){
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      return res.json();
+    }
+
+    scanBtn.onclick = async () => {
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+      console.log("Scanned:", text);
+
+      const nameMatch = text.match(/Name[: ]?(.+)/i);
+      const idMatch = text.match(/ID[: ]?(\d+)/i);
+      if(!nameMatch || !idMatch){ alert("Could not detect Name or ID"); return; }
+
+      const name = nameMatch[1].trim();
+      const id = idMatch[1].trim();
+
+      currentUser = await callAPI("/fetch_or_create", { name, id });
+      showPanel();
+    };
+
+    function showPanel(){
+      scanBtn.style.display = "none";
+      panel.style.display = "block";
+      accName.innerText = "Name: " + currentUser.name;
+      accId.innerText = "ID: " + currentUser.id;
+      accBalance.innerText = "Current Balance: ₱" + currentUser.balance;
+    }
+
+    document.getElementById("deductBtn").onclick = async () => {
+      const amt = Number(document.getElementById("amount").value);
+      if(amt > 0){
+        currentUser.balance -= amt;
+        currentUser = await callAPI("/update_balance", { id: currentUser.id, balance: currentUser.balance });
+        accBalance.innerText = "Current Balance: ₱" + currentUser.balance;
+      }
+    };
+
+    document.getElementById("changeBtn").onclick = async () => {
+      const amt = Number(document.getElementById("amount").value);
+      if(amt >= 0){
+        currentUser.balance = amt;
+        currentUser = await callAPI("/update_balance", { id: currentUser.id, balance: currentUser.balance });
+        accBalance.innerText = "Current Balance: ₱" + currentUser.balance;
+      }
+    };
+
+    document.getElementById("exitBtn").onclick = () => {
+      currentUser = null;
+      panel.style.display = "none";
+      scanBtn.style.display = "block";
+    };
+  </script>
+</body>
+</html>
