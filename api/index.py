@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
 
-app = Flask(__name__, template_folder="../templates")
+app = Flask(__name__, template_folder="templates")
 
 # --- Supabase Setup ---
 SUPABASE_URL = "https://hzjqmssccnxddsbqliaq.supabase.co"
@@ -36,7 +36,3 @@ def update_balance():
 
     res = supabase.table("accounts").update({"balance": new_balance}).eq("id", acc_id).execute()
     return jsonify(res.data[0])
-
-def handler(request):
-    """Vercel entrypoint"""
-    return app(request)
